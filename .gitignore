@@ -1,0 +1,3 @@
+# nothing secret lives in this repo yet — the VPS holds live state,
+# this repo holds intent. Add entries here if/when real config with
+# secrets (env files, keys) ever lands.
