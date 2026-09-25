@@ -26,6 +26,16 @@ an app is two commits in two repos, by design.
   run on it. `apps.conf` and `deploy.sh` exist and are ready, but untested
   against a real deploy until Docker is installed on the server.
 
+## This repo on the VPS
+
+`infra/` itself is cloned to `~/infra` (i.e. `/home/uri/infra`) on the
+server — operator tooling checked out and run by `uri`, not a deployed app,
+so it deliberately does **not** live under `/srv` (that's reserved for
+`<app-name>` directories `deploy.sh` manages — see below). Cloned via a
+dedicated per-repo deploy key (`~/.ssh/infra_deploy_key` on the VPS,
+`Host github.com-infra` alias in its `~/.ssh/config`), same pattern as each
+app's own deploy key described below.
+
 ## Deploying an app: filesystem layout and deploy.sh
 
 This project is explicitly a **suite of apps sharing one VPS**, not a
@@ -40,6 +50,16 @@ rather than being retrofitted once a second app shows up.
   (see the Infra Knowledge doc's Compose/networking entries for why that
   isolation is correct, not a limitation, until something needs
   cross-app networking).
+- **Private repos need a per-repo deploy key.** Each app's repo (private,
+  same as `infra/` itself) gets its own dedicated read-only SSH deploy key,
+  generated on the VPS (`ssh-keygen -f ~/.ssh/<app>_deploy_key`) and added
+  to that repo's GitHub Settings → Deploy keys with write access
+  *unchecked*. A matching `Host github.com-<app>` alias in the VPS's own
+  `~/.ssh/config` (`IdentityFile ~/.ssh/<app>_deploy_key`, `IdentitiesOnly
+  yes`) makes SSH pick the right key per repo — `apps.conf`'s clone URL
+  uses that alias (`git@github.com-<app>:...`), not bare `github.com`. This
+  is deliberately scoped tighter than a personal SSH key: read-only, one
+  repo only, so a compromised VPS can't push anywhere or read other repos.
 - **`apps.conf`** is the registry: one `name=git-url` line per app this box
   deploys. Add a line here when an app is actually ready for a first real
   deploy — not speculatively ahead of that.
