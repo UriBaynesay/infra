@@ -21,10 +21,20 @@ an app is two commits in two repos, by design.
   - **Fully provisioned + hardened per [`docs/vps-provisioning.md`](docs/vps-provisioning.md)** —
     that runbook is the reproducible record of every step, with command
     explanations. Nothing on the box was done outside it.
-- **Nothing deployed yet.** Docker on the VPS is the next step (the actual
-  reason the box exists). `apps/diet-helper` is the first thing that will
-  run on it. `apps.conf` and `deploy.sh` exist and are ready, but untested
-  against a real deploy until Docker is installed on the server.
+- **Docker + Compose installed** on the VPS (`docker-ce`, `docker-ce-cli`,
+  `containerd.io`, `docker-buildx-plugin`, `docker-compose-plugin`, via
+  Docker's own apt repo — not Ubuntu's `docker.io`). `uri` is in the
+  `docker` group (no `sudo` needed for `docker`/`docker compose`).
+- **`apps/diet-helper` is deployed and running** via `./deploy.sh
+  diet-helper` (cloned to `/srv/diet-helper`, using its own read-only
+  deploy key). Migrations applied (all 9 tables present). Reachable at
+  `http://178.105.102.146:3000`.
+  - **⚠️ TEMPORARY: `app`'s port is publicly bound (`0.0.0.0:3000`, not
+    `127.0.0.1`) and `3000/tcp` is open in `ufw`**, deliberately, so the
+    app is reachable before nginx exists. Revert both — the compose file
+    back to `127.0.0.1:3000:3000`, and `sudo ufw delete allow 3000/tcp` —
+    once nginx is live and is the sole public entrypoint. Postgres stays
+    `127.0.0.1`-only throughout; it was never part of this exception.
 
 ## This repo on the VPS
 
