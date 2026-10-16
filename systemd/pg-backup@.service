@@ -1,0 +1,8 @@
+[Unit]
+Description=Postgres backup for %i
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/uri/infra/backup/pg-backup.sh %i
