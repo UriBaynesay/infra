@@ -1,8 +1,8 @@
 # Infra: Personal VPS Hosting
 
-Server-level state for the project — the host, its config, and (eventually)
-reverse proxy, container orchestration wiring, and scheduled-task
-definitions. See the root [`CLAUDE.md`](../CLAUDE.md) for the project-wide
+Server-level state for the project — the host, its config, the reverse
+proxy, deploy tooling, and scheduled-task definitions (systemd timers). See
+the root [`CLAUDE.md`](../CLAUDE.md) for the project-wide
 purpose, repo-structure rationale, and Claude's role (tutor / co-designer /
 builder) — all of which apply here unchanged.
 
@@ -18,23 +18,34 @@ an app is two commits in two repos, by design.
   - Hostname `vpa-1`.
   - Reachable as `ssh vpa` (local `~/.ssh/config` alias → user `uri`, key
     `~/.ssh/hetzner_vpa`).
-  - **Fully provisioned + hardened per [`docs/vps-provisioning.md`](docs/vps-provisioning.md)** —
-    that runbook is the reproducible record of every step, with command
-    explanations. Nothing on the box was done outside it.
-- **Docker + Compose installed** on the VPS (`docker-ce`, `docker-ce-cli`,
-  `containerd.io`, `docker-buildx-plugin`, `docker-compose-plugin`, via
-  Docker's own apt repo — not Ubuntu's `docker.io`). `uri` is in the
-  `docker` group (no `sudo` needed for `docker`/`docker compose`).
-- **`apps/diet-helper` is deployed and running** via `./deploy.sh
-  diet-helper` (cloned to `/srv/diet-helper`, using its own read-only
-  deploy key). Migrations applied (all 9 tables present). Reachable at
-  `http://178.105.102.146:3000`.
-  - **⚠️ TEMPORARY: `app`'s port is publicly bound (`0.0.0.0:3000`, not
-    `127.0.0.1`) and `3000/tcp` is open in `ufw`**, deliberately, so the
-    app is reachable before nginx exists. Revert both — the compose file
-    back to `127.0.0.1:3000:3000`, and `sudo ufw delete allow 3000/tcp` —
-    once nginx is live and is the sole public entrypoint. Postgres stays
-    `127.0.0.1`-only throughout; it was never part of this exception.
+  - **Provisioned + hardened per [`docs/vps-provisioning.md`](docs/vps-provisioning.md)**,
+    and everything after that (Docker, deploy keys, first deploy, hostname,
+    nginx, HTTPS, backups) per [`docs/first-app-live.md`](docs/first-app-live.md).
+    Those two runbooks are the reproducible record, with command
+    explanations; keep the box and them in step.
+- **Docker + Compose** (`docker-ce`, `containerd.io`, buildx and compose
+  plugins, from Docker's own apt repo — not Ubuntu's `docker.io`). `uri` is
+  in the `docker` group.
+- **Hostname:** `v1vpa.duckdns.org` (free DuckDNS name) -> `178.105.102.146`,
+  and every subdomain of it resolves there too, so each app is
+  `<app>.v1vpa.duckdns.org` with no further DNS work. DuckDNS over sslip.io
+  because `duckdns.org` is on the Public Suffix List (own Let's Encrypt
+  rate-limit bucket per name; sslip.io shares one worldwide).
+- **nginx (native) + Let's Encrypt** are the only public entrypoint: `ufw`
+  allows only 22, 80, 443. Certificates via `certbot certonly --nginx`
+  (renewal on certbot's own systemd timer, rehearsed with `certbot renew
+  --dry-run`); site configs live in `nginx/sites/` and are symlinked into
+  `/etc/nginx/sites-enabled/`.
+- **`apps/diet-helper` is live at `https://diet.v1vpa.duckdns.org`**, deployed
+  via `./deploy.sh diet-helper` (`/srv/diet-helper`, its own read-only deploy
+  key). Its app and Postgres ports are bound to `127.0.0.1` only; the raw
+  `:3000` exception is closed. Migrations are run from the dev PC through an
+  SSH tunnel (the production image has no migration tooling).
+- **Nightly Postgres dumps** per app: `backup/pg-backup.sh <app>` driven by
+  templated systemd units (`systemd/pg-backup@.{service,timer}`, enabled per
+  app with `systemctl enable --now pg-backup@<app>.timer`), 03:30 UTC, kept
+  14 days in `/var/backups/<app>/` (root-only). Restore drill done and
+  documented. Same disk only: see "not set up yet".
 
 ## This repo on the VPS
 
@@ -96,26 +107,34 @@ app," and containerizing it would need `network_mode: host` or
 `host.docker.internal` just to reach each app's `localhost` port — real
 complexity for zero benefit here.
 
-The shape once it exists: nginx is the *only* thing with a public port
+The shape, now in place: nginx is the *only* thing with a public port
 (80/443) open in the firewall; every app's own container instead publishes
 to `127.0.0.1:<port>` only (host-reachable, not internet-reachable), and
 nginx proxies by hostname to whichever `localhost` port that app runs on.
-`nginx/sites/<app-name>.conf` holds each app's routing rule.
+`nginx/sites/<app-name>.conf` holds each app's routing rule. Why loopback
+and not just `ufw`: Docker's own iptables rules bypass `ufw` for published
+ports, so the `127.0.0.1` bind is what actually protects them.
+
+Per-app facts nginx has to be told, because they are not defaults:
+`client_max_body_size` above the app's upload cap (nginx's 1 MB default
+answers 413), `proxy_read_timeout` above its slowest inline call, and
+`X-Forwarded-Proto` so the app knows the visitor used HTTPS (Node itself
+only ever sees plain HTTP from `127.0.0.1`).
 
 ## What is NOT set up yet (deliberately, per build-gradually)
 
-- **Docker / Compose on the VPS** — next step.
-- **nginx itself** — the layout above is decided; installing and writing
-  the first real site config waits for an actual app running in Docker on
-  the box to route to.
+- **Off-box backups** — the nightly dumps sit on the same disk, so they
+  survive mistakes and bad migrations but not losing the VPS (no Hetzner
+  whole-disk backup was taken, declined at create time). Next step is an
+  S3-compatible bucket (Backblaze B2 / Hetzner Object Storage) via rclone.
+- **Rate limiting on `/api/login` and `/api/register`** (nginx `limit_req`) —
+  registration is open and now public; this is the next hardening step.
+- **HSTS** — add `Strict-Transport-Security` with a short max-age first,
+  raise it once HTTPS is known-stable.
 - **Hetzner Cloud Firewall** (the network-level one, distinct from the
-  host's `ufw`) — after Docker + the app define which ports (80/443) need
-  opening, so rules aren't guessed.
+  host's `ufw`) — ports are now known (22/80/443), so this can be done.
 - **`fail2ban`** — lower priority now that SSH password auth is off; still
   standard, do as its own step.
-- **App-level Postgres backup** — no Hetzner whole-disk backup was taken
-  (declined at create time), so this is a real near-term gap once diet-helper
-  holds data worth keeping.
 - **Automated DB migration ordering in `deploy.sh`** — stays a manual step
   per deploy until the safe ordering is actually worked out.
 - **cloud-init** — provisioning was done by hand on purpose (learning value);
