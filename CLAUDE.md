@@ -20,7 +20,7 @@ an app is two commits in two repos, by design.
     `~/.ssh/hetzner_vpa`).
   - **Provisioned + hardened per [`docs/vps-provisioning.md`](docs/vps-provisioning.md)**,
     and everything after that (Docker, deploy keys, first deploy, hostname,
-    nginx, HTTPS, backups) per [`docs/first-app-live.md`](docs/first-app-live.md).
+    nginx, HTTPS) per [`docs/first-app-live.md`](docs/first-app-live.md).
     Those two runbooks are the reproducible record, with command
     explanations; keep the box and them in step.
 - **Docker + Compose** (`docker-ce`, `containerd.io`, buildx and compose
@@ -41,11 +41,6 @@ an app is two commits in two repos, by design.
   key). Its app and Postgres ports are bound to `127.0.0.1` only; the raw
   `:3000` exception is closed. Migrations are run from the dev PC through an
   SSH tunnel (the production image has no migration tooling).
-- **Nightly Postgres dumps** per app: `backup/pg-backup.sh <app>` driven by
-  templated systemd units (`systemd/pg-backup@.{service,timer}`, enabled per
-  app with `systemctl enable --now pg-backup@<app>.timer`), 03:30 UTC, kept
-  14 days in `/var/backups/<app>/` (root-only). Restore drill done and
-  documented. Same disk only: see "not set up yet".
 
 ## This repo on the VPS
 
@@ -123,10 +118,12 @@ only ever sees plain HTTP from `127.0.0.1`).
 
 ## What is NOT set up yet (deliberately, per build-gradually)
 
-- **Off-box backups** — the nightly dumps sit on the same disk, so they
-  survive mistakes and bad migrations but not losing the VPS (no Hetzner
-  whole-disk backup was taken, declined at create time). Next step is an
-  S3-compatible bucket (Backblaze B2 / Hetzner Object Storage) via rclone.
+- **Database backups — deliberately none, by the owner's decision.** A Hetzner
+  whole-disk backup was declined at create time, and a nightly `pg_dump` +
+  systemd-timer setup that was built for both apps was removed again on the
+  owner's request. Losing the VPS or botching a migration means losing the
+  data; that is accepted. Do not propose or re-add backups unprompted (the
+  fitness handoff spec also lists them; that item is not wanted).
 - **Rate limiting on `/api/login` and `/api/register`** (nginx `limit_req`) —
   registration is open and now public; this is the next hardening step.
 - **HSTS** — add `Strict-Transport-Security` with a short max-age first,

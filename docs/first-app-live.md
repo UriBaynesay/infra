@@ -117,25 +117,10 @@ Cutover for the app: in its `.env` set `APP_URL=https://<hostname>`, deploy the
 version that binds `127.0.0.1` only and sets the session cookie `Secure`, then
 `sudo ufw delete allow 3000/tcp`. Verify `http://<ip>:3000` no longer answers.
 
-## 8. Nightly Postgres backups
+## Database backups: deliberately none
 
-```bash
-sudo systemctl link ~/infra/systemd/pg-backup@.service ~/infra/systemd/pg-backup@.timer
-sudo systemctl enable --now pg-backup@<app>.timer              # 03:30 UTC nightly
-sudo systemctl start pg-backup@<app>.service                   # one right now
-sudo ls -lh /var/backups/<app>/
-```
-
-Dumps are root-only, kept 14 days, same disk (survives mistakes, not losing the
-VPS; an off-box copy is still open). **Restore drill**, into a scratch database:
-
-```bash
-DC="docker compose -f /srv/<app>/docker-compose.yml --project-directory /srv/<app>"
-$DC exec -T postgres sh -c 'createdb -U "$POSTGRES_USER" restore_test'
-sudo sh -c 'zcat "$(ls -t /var/backups/<app>/*.sql.gz | head -1)"' | $DC exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d restore_test -v ON_ERROR_STOP=1 -q'
-$DC exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d restore_test -tAc "select count(*) from profiles"'
-$DC exec -T postgres sh -c 'dropdb -U "$POSTGRES_USER" restore_test'
-```
+The owner does not want them, so there is no dump job. Databases live only in the
+apps' Docker volumes on this one disk.
 
 ## Gotchas hit on the way
 

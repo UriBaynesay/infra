@@ -22,7 +22,7 @@ Done through `console.hetzner.cloud`, not a CLI. Choices made:
 | Type | `CX23`, Cost-Optimized, x86 | Cost-Optimized is ~3.5× cheaper than Regular Performance here (€6.49 vs ~$23/mo) for near-identical specs; "limited availability" only affects *creating/resizing* more Cost-Optimized servers later, not a running box. x86 over ARM to avoid a whole class of "no arm64 build" friction on a first server. |
 | Networking | Public IPv4 **+** IPv6 | Keep the IPv4 (~€0.60/mo) — an IPv6-only box is painful to reach (home ISPs, some mirrors/registries still lack clean IPv6). |
 | SSH key | `hetzner_vpa` public key attached | Attaching a key ⇒ server is key-only, **no root password emailed** — nothing to brute-force. |
-| Backups | **declined** | ~20% surcharge; relying on app code in git + a (still-TODO) app-level Postgres dump instead. This is a real gap until that dump exists. |
+| Backups | **declined** | ~20% surcharge; relying on app code in git. The owner has also decided against app-level database backups, so database contents are not backed up anywhere. |
 | Firewalls (Hetzner Cloud Firewall) | **skipped at create time** | Add the network-level firewall later, once Docker + the app define which ports to open. Host `ufw` covers the baseline now. |
 | Volumes, Placement groups, Labels, Cloud config | skipped | Not relevant for one hand-provisioned box. |
 
@@ -307,7 +307,6 @@ exit && ssh vpa                                  # prompt becomes uri@vpa-1:~$
 ## Still TODO (tracked in `../CLAUDE.md`)
 
 - Docker + Compose (next — the reason the box exists)
-- App-level Postgres backup (real gap — no whole-disk backup was taken)
 - Hetzner Cloud Firewall (network-level, after ports are known)
 - `fail2ban`
 - reverse proxy (nginx), `deploy.sh`
