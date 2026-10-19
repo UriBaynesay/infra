@@ -62,10 +62,18 @@ not a deployed app) and for each app (`apps.conf` uses the alias URL).
 ```bash
 git clone git@github.com-infra:UriBaynesay/infra.git ~/infra
 sudo chown uri:uri /srv                  # once; deploy.sh creates /srv/<app>
+cd ~/infra && ./deploy.sh <app>          # 1st run clones, then stops: no .env yet
 nano /srv/<app>/.env                     # secrets, by hand, never committed
 chmod 600 /srv/<app>/.env
-cd ~/infra && ./deploy.sh <app>
+cd ~/infra && ./deploy.sh <app>          # 2nd run pulls and brings the stack up
 ```
+
+**Order matters:** `deploy.sh` clones with `git clone`, which refuses a directory that
+already exists and is not empty. Creating `/srv/<app>/.env` *before* the first run
+(as this section used to say) makes the clone fail. Either run the script once first
+(it clones, then stops at the missing `.env`, which is fine), or clone by hand and
+put the `.env` in afterwards. To type a secret without it landing on screen or in shell
+history, use `read -rsp "Password: " VAR` and write it into the file from the variable.
 
 `deploy.sh` clones on first run, refuses to continue without `.env`, then runs
 `docker compose -f docker-compose.yml up -d --build`. Generate secrets that end
@@ -103,6 +111,17 @@ cd ~/infra && git pull
 sudo ln -s ~/infra/nginx/sites/<app>.conf /etc/nginx/sites-enabled/<app>.conf
 sudo rm /etc/nginx/sites-enabled/default                       # only the symlink
 sudo nginx -t && sudo systemctl reload nginx                   # check, then graceful reload
+# Later apps (nginx already installed): the committed site config names a certificate
+# that does not exist yet, so `nginx -t` fails. Bootstrap with a port-80-only stub first:
+#   sudo tee /etc/nginx/sites-available/<app>-bootstrap.conf <<'EOF'
+#   server { listen 80; listen [::]:80; server_name <app>.v1vpa.duckdns.org; location / { return 200 'ok'; } }
+#   EOF
+#   sudo ln -s /etc/nginx/sites-available/<app>-bootstrap.conf /etc/nginx/sites-enabled/<app>.conf
+#   sudo nginx -t && sudo systemctl reload nginx
+#   sudo certbot certonly --nginx -d <app>.v1vpa.duckdns.org
+#   sudo rm /etc/nginx/sites-enabled/<app>.conf /etc/nginx/sites-available/<app>-bootstrap.conf
+#   sudo ln -s ~/infra/nginx/sites/<app>.conf /etc/nginx/sites-enabled/<app>.conf
+#   sudo nginx -t && sudo systemctl reload nginx
 sudo apt-get install -y certbot python3-certbot-nginx
 sudo certbot certonly --nginx -d <app>.v1vpa.duckdns.org       # cert only; config stays ours
 ```
