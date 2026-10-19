@@ -41,6 +41,13 @@ an app is two commits in two repos, by design.
   key). Its app and Postgres ports are bound to `127.0.0.1` only; the raw
   `:3000` exception is closed. Migrations are run from the dev PC through an
   SSH tunnel (the production image has no migration tooling).
+- **`apps/fitness-tracker` is live at `https://fitness.v1vpa.duckdns.org`**
+  (app port 3001), migrations run inside its image
+  (`docker compose -f docker-compose.yml run --rm api node api/dist/db/migrate.js`).
+- **`apps/feed` (port 3002, `feed.v1vpa.duckdns.org`) is being brought up.** Its
+  nginx site has a `/mcp/` location with `access_log off` and buffering off,
+  because the MCP connector's secret token travels in the URL. Tokens are created
+  with `docker compose -f docker-compose.yml run --rm api node api/dist/tokens/create.js <label>`.
 
 ## This repo on the VPS
 
